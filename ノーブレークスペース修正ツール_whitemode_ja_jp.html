@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ノーブレークスペース (0xa0) 修正ツール</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background-color: #f7f7f7; }
+    .container { max-width: 900px; }
+    textarea { font-family: "Consolas", "Monaco", "Courier New", monospace; min-height: 250px; tab-size: 4; }
+    .highlight-space { display: inline-block; background-color: #ffeb3b; color: #d32f2f; padding: 0 4px; border-radius: 2px; font-weight: 700; font-size: 0.8em; cursor: help; }
+    .message-hidden { display: none; }
+  </style>
+</head>
+<body class="p-4 sm:p-8">
+  <div class="container mx-auto">
+    <h1 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2">'0xa0' (ノーブレークスペース) 修正ツール</h1>
+
+    <p class="mb-4 text-gray-600">
+      コードを貼り付けて「チェック＆修正」ボタンを押してください。ノーブレークスペースはハイライト表示され、修正ボタンで半角スペースに置換できます。
+    </p>
+
+    <div class="bg-white p-6 rounded-lg shadow-xl mb-6">
+      <label for="inputCode" class="block text-lg font-semibold text-gray-700 mb-2">元のコード (エラーが発生しているコード)</label>
+      <textarea id="inputCode" class="w-full border border-gray-300 p-3 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150" placeholder="ここにコードを貼り付けてください..."></textarea>
+    </div>
+
+    <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
+      <button id="checkButton" onclick="processCode(false)" class="w-full sm:w-1/2 bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">ステップ1: チェック＆ハイライト</button>
+      <button id="fixButton" onclick="processCode(true)" class="w-full sm:w-1/2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">ステップ2: 修正したコードを生成</button>
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-xl">
+      <label class="block text-lg font-semibold text-gray-700 mb-2">修正/ハイライト結果</label>
+      <div id="outputContainer" class="w-full border border-gray-300 p-3 rounded-lg bg-gray-50 overflow-auto whitespace-pre-wrap" aria-live="polite">
+        <p class="text-gray-500 italic">ここに結果が表示されます。</p>
+      </div>
+
+      <button id="copyButton" onclick="copyCode()" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-200 disabled:opacity-50" disabled>修正コードをクリップボードにコピー</button>
+      <span id="copyMessage" class="ml-4 text-green-600 font-semibold message-hidden">コピーしました！</span>
+    </div>
+
+    <div class="mt-8 p-4 bg-red-100 border border-red-300 rounded-lg">
+      <h3 class="text-xl font-semibold text-red-700 mb-2">エラーの原因について</h3>
+      <p class="text-red-600">
+        ノーブレークスペース (0xA0) は見た目は普通のスペースと同じでも識別子や構文で問題を起こします。外部ソースからコピーしたコードで発生しやすい問題です。
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const inputCode = document.getElementById('inputCode');
+    const outputContainer = document.getElementById('outputContainer');
+    const copyButton = document.getElementById('copyButton');
+    const copyMessage = document.getElementById('copyMessage');
+
+    // 0xA0 ノーブレークスペース
+    const NBSP = String.fromCharCode(0xA0);
+
+    function escapeHtml(text) {
+      return text.replace(/[&<>"']/g, function (m) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[m];
+      });
+    }
+
+    // ハイライト表示は innerHTML を直接組み立てず、DOM ノードで安全に行う
+    function buildHighlightedFragment(str) {
+      const frag = document.createDocumentFragment();
+      let start = 0;
+      for (let i = 0; i < str.length; i++) {
+        if (str[i] === NBSP) {
+          if (i > start) {
+            frag.appendChild(document.createTextNode(str.slice(start, i)));
+          }
+          const span = document.createElement('span');
+          span.className = 'highlight-space';
+          span.title = 'No-Break Space (0xA0)';
+          span.textContent = 'NBSP';
+          frag.appendChild(span);
+          start = i + 1;
+        }
+      }
+      if (start < str.length) {
+        frag.appendChild(document.createTextNode(str.slice(start)));
+      }
+      return frag;
+    }
+
+    function processCode(shouldFix) {
+      const original = inputCode.value || '';
+      if (shouldFix) {
+        // 置換して結果をプレーンテキストで表示（escape して <br> を使う）
+        const fixed = original.split(NBSP).join(' ');
+        // 表示: escape + replace newline -> br
+        const escaped = escapeHtml(fixed);
+        outputContainer.innerHTML = '';
+        escaped.split('\n').forEach((line, idx) => {
+          outputContainer.appendChild(document.createTextNode(line));
+          if (idx < escaped.split('\n').length - 1) outputContainer.appendChild(document.createElement('br'));
+        });
+        copyButton.disabled = false;
+        copyButton.dataset.codeToCopy = fixed;
+        showMessage('修正が完了しました。下のコードをコピーしてご利用ください。', 'green');
+      } else {
+        // チェックモード：ハイライト表示（DOMで組み立て）
+        outputContainer.innerHTML = '';
+        const lines = original.split('\n');
+        lines.forEach((line, idx) => {
+          const frag = buildHighlightedFragment(line);
+          outputContainer.appendChild(frag);
+          if (idx < lines.length - 1) outputContainer.appendChild(document.createElement('br'));
+        });
+        copyButton.disabled = true;
+        if (original.includes(NBSP)) {
+          showMessage('ノーブレークスペース（NBSP）をハイライトしました。修正するには「修正したコードを生成」を押してください。', 'yellow');
+        } else {
+          showMessage('ノーブレークスペース（0xA0）は見つかりませんでした。', 'blue');
+        }
+      }
+    }
+
+    async function copyCode() {
+      const code = copyButton.dataset.codeToCopy || '';
+      if (!code) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(code);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = code;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        copyMessage.classList.remove('message-hidden');
+        setTimeout(() => copyMessage.classList.add('message-hidden'), 2000);
+      } catch (err) {
+        console.error('コピー失敗:', err);
+      }
+    }
+
+    // シンプルなメッセージ表示（ARIA フレンドリー）
+    function showMessage(text, color) {
+      let box = document.getElementById('messageBox');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'messageBox';
+        box.className = 'p-3 rounded-lg mb-4 text-center font-semibold transition-all duration-300';
+        outputContainer.parentElement.insertBefore(box, outputContainer);
+      }
+      box.textContent = text;
+      box.className = box.className.replace(/\bbg-\S+/g, '').replace(/\btext-\S+/g, '');
+      let bg = 'bg-blue-100', txt = 'text-blue-700';
+      if (color === 'green') { bg = 'bg-green-100'; txt = 'text-green-700'; }
+      else if (color === 'yellow') { bg = 'bg-yellow-100'; txt = 'text-yellow-700'; }
+      box.classList.add(bg, txt);
+      box.setAttribute('role', 'status');
+      setTimeout(() => { box.textContent = ''; box.classList.add('message-hidden'); }, 5000);
+    }
+
+    // 初期化
+    window.addEventListener('load', () => {
+      if (!document.getElementById('messageBox')) {
+        const mb = document.createElement('div');
+        mb.id = 'messageBox';
+        mb.className = 'p-3 rounded-lg mb-4 text-center font-semibold transition-all duration-300 message-hidden';
+        outputContainer.parentElement.insertBefore(mb, outputContainer);
+      }
+    });
+  </script>
+</body>
+</html>
