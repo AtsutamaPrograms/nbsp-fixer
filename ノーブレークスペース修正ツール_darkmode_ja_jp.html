@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ノーブレークスペース (0xa0) 修正ツール - Dark</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #0f1724;
+      --muted: #94a3b8;
+      --text: #e6eef8;
+      --accent: #fbbf24;
+      --accent-2: #60a5fa;
+      --highlight-bg: #403214;
+      --highlight-text: #ffcc80;
+      --success-bg: #052e16;
+      --success-text: #86efac;
+      --warn-bg: #2a2a0a;
+      --warn-text: #facc15;
+      --error-bg: #2a0b0b;
+      --error-text: #fda4af;
+    }
+    html,body { height:100%; }
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background-color: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    .container { max-width: 900px; }
+    textarea {
+      font-family: "Consolas","Monaco","Courier New",monospace;
+      min-height: 250px;
+      tab-size: 4;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid rgba(148,163,184,0.12);
+    }
+    .card { background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border: 1px solid rgba(255,255,255,0.04); }
+    .highlight-space {
+      display: inline-block;
+      background-color: var(--highlight-bg);
+      color: var(--highlight-text);
+      padding: 0 6px;
+      border-radius: 3px;
+      font-weight: 700;
+      font-size: 0.8em;
+      cursor: help;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.02) inset;
+    }
+    .message-hidden { display: none; }
+    .btn { transition: background-color .15s ease; }
+    .muted { color: var(--muted); }
+    .border-muted { border-color: rgba(148,163,184,0.08); }
+  </style>
+</head>
+<body class="p-4 sm:p-8">
+  <div class="container mx-auto">
+    <h1 class="text-3xl font-bold mb-6 border-b pb-2" style="border-color:rgba(255,255,255,0.04)">'0xa0' (ノーブレークスペース) 修正ツール</h1>
+
+    <p class="mb-4 muted">コードを貼り付けて「チェック＆修正」ボタンを押してください。ノーブレークスペースはハイライト表示され、修正ボタンで半角スペースに置換できます。</p>
+
+    <div class="card p-6 rounded-lg shadow-xl mb-6">
+      <label for="inputCode" class="block text-lg font-semibold mb-2">元のコード (エラーが発生しているコード)</label>
+      <textarea id="inputCode" class="w-full p-3 rounded-lg focus:ring-0" placeholder="ここにコードを貼り付けてください..."></textarea>
+    </div>
+
+    <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
+      <button id="checkButton" onclick="processCode(false)" class="btn w-full sm:w-1/2 bg-yellow-600 hover:bg-yellow-500 text-black font-semibold py-3 px-4 rounded-lg">ステップ1: チェック＆ハイライト</button>
+      <button id="fixButton" onclick="processCode(true)" class="btn w-full sm:w-1/2 bg-blue-700 hover:bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg">ステップ2: 修正したコードを生成</button>
+    </div>
+
+    <div class="card p-6 rounded-lg shadow-xl">
+      <label class="block text-lg font-semibold mb-2">修正/ハイライト結果</label>
+      <div id="outputContainer" class="w-full p-3 rounded-lg bg-transparent border-muted overflow-auto whitespace-pre-wrap" aria-live="polite">
+        <p class="muted italic">ここに結果が表示されます。</p>
+      </div>
+
+      <button id="copyButton" onclick="copyCode()" class="mt-4 bg-green-600 hover:bg-green-500 text-black font-semibold py-2 px-4 rounded-lg" disabled>修正コードをクリップボードにコピー</button>
+      <span id="copyMessage" class="ml-4 font-semibold message-hidden" style="color:var(--success-text)">コピーしました！</span>
+    </div>
+
+    <div class="mt-8 p-4 rounded-lg" style="background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00)); border:1px solid rgba(255,255,255,0.03);">
+      <h3 class="text-xl font-semibold mb-2" style="color:var(--error-text)">エラーの原因について</h3>
+      <p style="color:var(--muted)">ノーブレークスペース (0xA0) は見た目は普通のスペースと同じでも識別子や構文で問題を起こします。外部ソースからコピーしたコードで発生しやすい問題です。</p>
+    </div>
+  </div>
+
+  <script>
+    const inputCode = document.getElementById('inputCode');
+    const outputContainer = document.getElementById('outputContainer');
+    const copyButton = document.getElementById('copyButton');
+    const copyMessage = document.getElementById('copyMessage');
+    const NBSP = String.fromCharCode(0xA0);
+
+    function buildHighlightedFragment(str) {
+      const frag = document.createDocumentFragment();
+      let start = 0;
+      for (let i = 0; i < str.length; i++) {
+        if (str[i] === NBSP) {
+          if (i > start) frag.appendChild(document.createTextNode(str.slice(start, i)));
+          const span = document.createElement('span');
+          span.className = 'highlight-space';
+          span.title = 'No-Break Space (0xA0)';
+          span.textContent = 'NBSP';
+          frag.appendChild(span);
+          start = i + 1;
+        }
+      }
+      if (start < str.length) frag.appendChild(document.createTextNode(str.slice(start)));
+      return frag;
+    }
+
+    function processCode(shouldFix) {
+      const original = inputCode.value || '';
+      if (shouldFix) {
+        const fixed = original.split(NBSP).join(' ');
+        outputContainer.innerHTML = '';
+        fixed.split('\n').forEach((line, idx, arr) => {
+          outputContainer.appendChild(document.createTextNode(line));
+          if (idx < arr.length - 1) outputContainer.appendChild(document.createElement('br'));
+        });
+        copyButton.disabled = false;
+        copyButton.dataset.codeToCopy = fixed;
+        showMessage('修正が完了しました。下のコードをコピーしてご利用ください。', 'green');
+      } else {
+        outputContainer.innerHTML = '';
+        const lines = original.split('\n');
+        lines.forEach((line, idx) => {
+          outputContainer.appendChild(buildHighlightedFragment(line));
+          if (idx < lines.length - 1) outputContainer.appendChild(document.createElement('br'));
+        });
+        copyButton.disabled = true;
+        if (original.includes(NBSP)) showMessage('ノーブレークスペース（NBSP）をハイライトしました。修正するには「修正したコードを生成」を押してください。', 'yellow');
+        else showMessage('ノーブレークスペース（0xA0）は見つかりませんでした。', 'blue');
+      }
+    }
+
+    async function copyCode() {
+      const code = copyButton.dataset.codeToCopy || '';
+      if (!code) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(code);
+        else {
+          const ta = document.createElement('textarea');
+          ta.value = code;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        copyMessage.classList.remove('message-hidden');
+        setTimeout(() => copyMessage.classList.add('message-hidden'), 2000);
+      } catch (e) {}
+    }
+
+    function showMessage(text, color) {
+      let box = document.getElementById('messageBox');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'messageBox';
+        box.className = 'p-3 rounded-lg mb-4 text-center font-semibold transition-all duration-300';
+        outputContainer.parentElement.insertBefore(box, outputContainer);
+      }
+      box.textContent = text;
+      box.className = box.className.replace(/\bbg-\S+/g, '').replace(/\btext-\S+/g, '');
+      if (color === 'green') { box.style.background = 'var(--success-bg)'; box.style.color = 'var(--success-text)'; }
+      else if (color === 'yellow') { box.style.background = 'var(--warn-bg)'; box.style.color = 'var(--warn-text)'; }
+      else { box.style.background = 'var(--error-bg)'; box.style.color = 'var(--error-text)'; }
+      box.setAttribute('role', 'status');
+      setTimeout(() => { box.textContent = ''; box.style.background = ''; box.style.color = ''; }, 5000);
+    }
+
+    window.addEventListener('load', () => {
+      if (!document.getElementById('messageBox')) {
+        const mb = document.createElement('div');
+        mb.id = 'messageBox';
+        mb.className = 'p-3 rounded-lg mb-4 text-center font-semibold transition-all duration-300 message-hidden';
+        outputContainer.parentElement.insertBefore(mb, outputContainer);
+      }
+    });
+  </script>
+</body>
+</html>
